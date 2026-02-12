@@ -1,26 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>xivlauncher</id>
+  <id>dev.xivtclauncher.launcher</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0</project_license>
-  <name>XIVLauncher</name>
-  <summary>Launcher &amp; seamless Linux integration for FFXIV</summary>
+  <name>XIVTCLauncher</name>
+  <summary>Custom launcher for FFXIV Taiwan on Linux</summary>
   <description>
     <p>
-      XIVLauncher is a custom launcher for FFXIV that offers painless patching, a customized WINE version for perfect compatibility with the game, a multitude of useful plugins and seamless Steam Deck integration. Install, log in, patch, and get started!
+      XIVTCLauncher is a custom launcher for FFXIV Taiwan that offers painless patching, a customized WINE version for perfect compatibility with the game, Dalamud plugin support via yanmucorp, and seamless Steam Deck integration. Based on XIVLauncher.Core.
     </p>
   </description>
-  <url type="homepage">https://goatcorp.github.io/</url>
-  <url type="bugtracker">https://github.com/goatcorp/FFXIVQuickLauncher/issues</url>
-  <url type="help">https://discord.gg/3NMcUV5</url>
-  <screenshots>
-    <screenshot type="default">
-      <image>https://raw.githubusercontent.com/goatcorp/FFXIVQuickLauncher/master/misc/xlcore_screenshot.png</image>
-    </screenshot>
-  </screenshots>
-  <update_contact>xivflatpak@centzilius.de</update_contact>
-  <launchable type="desktop-id">xivlauncher.desktop</launchable>
-  <project_group>goatcorp</project_group>
-  <developer_name>XIVLauncher Contributors</developer_name>
+  <url type="homepage">https://github.com/cycleapple/XIVTCLauncher.Core</url>
+  <url type="bugtracker">https://github.com/cycleapple/XIVTCLauncher.Core/issues</url>
+  <launchable type="desktop-id">xivtclauncher.desktop</launchable>
+  <project_group>XIVTCLauncher</project_group>
+  <developer_name>XIVTCLauncher Contributors</developer_name>
   <content_rating type="oars-1.1" />
 </component>

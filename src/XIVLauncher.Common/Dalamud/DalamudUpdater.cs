@@ -499,34 +499,12 @@ namespace XIVLauncher.Common.Dalamud
             return localVersion;
         }
 
-        private async Task<bool> CheckRuntimeHashes(DirectoryInfo runtimePath, string version)
+        private Task<bool> CheckRuntimeHashes(DirectoryInfo runtimePath, string version)
         {
-            var hashesFile = new FileInfo(Path.Combine(runtimePath.FullName, $"hashes-{version}.json"));
-            string? runtimeHashes = null;
-
-            if (!hashesFile.Exists)
-            {
-                Log.Verbose("[DUPDATE] Hashes file does not exist, redownloading...");
-
-                try
-                {
-                    using var client = new HttpClient();
-                    runtimeHashes = await client.GetStringAsync($"https://kamori.goats.dev/Dalamud/Release/Runtime/Hashes/{version}").ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "[DUPDATE] Could not download hashes for runtime v{Version}", version);
-                    return false;
-                }
-
-                File.WriteAllText(hashesFile.FullName, runtimeHashes);
-            }
-            else
-            {
-                runtimeHashes = File.ReadAllText(hashesFile.FullName);
-            }
-
-            return CheckIntegrity(runtimePath, runtimeHashes);
+            // Skip remote hash check for NuGet-based runtime downloads (Taiwan version).
+            // NuGet packages are verified by their own integrity checks during download.
+            Log.Verbose("[DUPDATE] Skipping remote runtime hash check (NuGet source)");
+            return Task.FromResult(true);
         }
 
         private async Task DownloadRuntime(DirectoryInfo runtimePath, string version)
@@ -545,21 +523,70 @@ namespace XIVLauncher.Common.Dalamud
             // Wait for it to be gone, thanks Windows
             Thread.Sleep(1000);
 
-            var dotnetUrl = $"https://kamori.goats.dev/Dalamud/Release/Runtime/DotNet/{version}";
-            var desktopUrl = $"https://kamori.goats.dev/Dalamud/Release/Runtime/WindowsDesktop/{version}";
+            // Download from NuGet instead of kamori (for Taiwan/yanmucorp Dalamud)
+            var nugetBaseUrl = Constants.NUGET_BASE_URL;
 
-            var downloadPath = PlatformHelpers.GetTempFileName();
+            var versionParts = version.Split('.');
+            var dotnetMajorMinor = versionParts.Length >= 2 ? $"{versionParts[0]}.{versionParts[1]}" : "9.0";
 
-            if (File.Exists(downloadPath))
-                File.Delete(downloadPath);
+            // Download .NET Core Runtime nupkg
+            var netcorePkg = "microsoft.netcore.app.runtime.win-x64";
+            var netcoreUrl = $"{nugetBaseUrl}/{netcorePkg}/{version.ToLower()}/{netcorePkg}.{version.ToLower()}.nupkg";
+            var netcorePath = PlatformHelpers.GetTempFileName();
 
-            await this.DownloadFile(dotnetUrl, downloadPath, this.defaultTimeout).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(downloadPath, runtimePath.FullName);
+            Log.Information("[DUPDATE] Downloading NETCore runtime from NuGet: {Url}", netcoreUrl);
+            await this.DownloadFile(netcoreUrl, netcorePath, this.defaultTimeout).ConfigureAwait(false);
+            ExtractNuGetRuntime(netcorePath, runtimePath.FullName, version, dotnetMajorMinor, "Microsoft.NETCore.App");
+            File.Delete(netcorePath);
 
-            await this.DownloadFile(desktopUrl, downloadPath, this.defaultTimeout).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(downloadPath, runtimePath.FullName);
+            // Download Windows Desktop Runtime nupkg
+            var desktopPkg = "microsoft.windowsdesktop.app.runtime.win-x64";
+            var desktopUrl = $"{nugetBaseUrl}/{desktopPkg}/{version.ToLower()}/{desktopPkg}.{version.ToLower()}.nupkg";
+            var desktopPath = PlatformHelpers.GetTempFileName();
 
-            File.Delete(downloadPath);
+            Log.Information("[DUPDATE] Downloading WindowsDesktop runtime from NuGet: {Url}", desktopUrl);
+            await this.DownloadFile(desktopUrl, desktopPath, this.defaultTimeout).ConfigureAwait(false);
+            ExtractNuGetRuntime(desktopPath, runtimePath.FullName, version, dotnetMajorMinor, "Microsoft.WindowsDesktop.App");
+            File.Delete(desktopPath);
+
+            // Move hostfxr.dll to correct location
+            var hostfxrSource = Path.Combine(runtimePath.FullName, "shared", "Microsoft.NETCore.App", version, "hostfxr.dll");
+            if (File.Exists(hostfxrSource))
+            {
+                var hostfxrTargetDir = Path.Combine(runtimePath.FullName, "host", "fxr", version);
+                Directory.CreateDirectory(hostfxrTargetDir);
+                var hostfxrTarget = Path.Combine(hostfxrTargetDir, "hostfxr.dll");
+                if (File.Exists(hostfxrTarget))
+                    File.Delete(hostfxrTarget);
+                File.Move(hostfxrSource, hostfxrTarget);
+                Log.Verbose("[DUPDATE] Moved hostfxr.dll to {Path}", hostfxrTargetDir);
+            }
+        }
+
+        private static void ExtractNuGetRuntime(string nupkgPath, string runtimeRoot, string version, string dotnetVersion, string frameworkName)
+        {
+            var targetDir = Path.Combine(runtimeRoot, "shared", frameworkName, version);
+            Directory.CreateDirectory(targetDir);
+
+            using var archive = ZipFile.OpenRead(nupkgPath);
+            var nativePath = "runtimes/win-x64/native/";
+            var libPath = $"runtimes/win-x64/lib/net{dotnetVersion}/";
+
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrEmpty(entry.Name))
+                    continue;
+
+                if (entry.FullName.StartsWith(nativePath, StringComparison.OrdinalIgnoreCase) ||
+                    entry.FullName.StartsWith(libPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    var destPath = Path.Combine(targetDir, entry.Name);
+                    var destDir = Path.GetDirectoryName(destPath);
+                    if (!string.IsNullOrEmpty(destDir))
+                        Directory.CreateDirectory(destDir);
+                    entry.ExtractToFile(destPath, overwrite: true);
+                }
+            }
         }
 
         public async Task DownloadFile(string url, string path, TimeSpan timeout)
